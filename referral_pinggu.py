@@ -22,6 +22,7 @@ Quick Start:
 '''
 
 from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
 from bs4 import BeautifulSoup
 import random
 import string
@@ -127,7 +128,7 @@ def try_register(proxy=None):
     try:
         driver.WebDriverWait(driver, 20)
     except:
-        print("skip")
+        print("Skip loading main page due to slow connection")
     finally:
         if not os.path.isdir('screenshot'):
             os.mkdir('screenshot')
@@ -162,24 +163,54 @@ def try_register(proxy=None):
     return random_str
 
 
-def access_referral():
+def access_referral(multi_attempts=True, skip_proxy=False):
     '''
     Visit reward. Reward is calculated by number of unique IP's.
     Here, requests package is used for timing concerns.
     '''
-    proxy = update_proxy()
-    count = 0
-    for _proxy in proxy:
-        if count >= _max_visit_count * 1.5:
-            break
-        try:
-            requests.get(_your_referral_url, headers=random.choice(_userAgents),
-                         proxies=_proxy, timeout=60)
-            count += 1
-            print("Visit %d finished" % count)
-            time.sleep(3)
-        except:
-            time.sleep(1)
+    if not skip_proxy:
+        proxy = update_proxy()
+        count = 0
+        for _proxy in proxy:
+            if count >= _max_visit_count:
+                break
+            try:
+                requests.get(_your_referral_url, headers=random.choice(_userAgents),
+                             proxies=_proxy, timeout=60)
+                count += 1
+                print("Visit %d finished" % count)
+                time.sleep(3)
+            except:
+                time.sleep(1)
+
+    # following are two site-availability-check service providers, but they can be used
+    # to increase the visit IPs of our referral link. However, this could be potentailly
+    # imcrease the stress of the forum, therefore try not to use it.
+    try:
+        assert multi_attempts
+        testing_url1 = 'http://www.host-tracker.com/'
+        driver = webdriver.PhantomJS()
+        driver.get(testing_url1)
+        driver.find_element_by_name('InstantCheckUrl').send_keys(_your_referral_url)
+        driver.find_element_by_tag_name('button').click()
+        driver.implicitly_wait(120)
+        # driver.save_screenshot('screenshot/site_check1.png')
+        driver.close()
+    except:
+        time.sleep(1)
+
+    try:
+        assert multi_attempts
+        testing_url2 = 'http://www.17ce.com/'
+        driver = webdriver.PhantomJS()
+        driver.get(testing_url2)
+        driver.find_element_by_name('url').send_keys(_your_referral_url, Keys.RETURN)
+        driver.implicitly_wait(120)
+        # driver.save_screenshot('screenshot/site_check2.png')
+        driver.close()
+    except:
+        time.sleep(1)
+
     return proxy
 
 
@@ -196,7 +227,7 @@ def access_register(proxy=None):
 
 
 if __name__ == '__main__':
-    access_referral()  # visit reward
+    access_referral(multi_attempts=True)  # visit reward
     access_register()  # register reward
     # while True: access_register(proxy=access_referral()); time.sleep(86000);
     # register with proxy, this is not necessary
