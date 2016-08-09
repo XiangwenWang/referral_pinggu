@@ -2,7 +2,7 @@
 This code is for testing purpose only, and is provided AS-IS.
 
 The code provided is used to collect the referral rewards of "bbs.pinggu.org".
-Technically, it will collect more than 1000 exp daily, which is equivalent to 100~190 coins.
+Technically, it will collect more than 1900 exp daily, which is equivalent to 190 coins.
 A long waiting time is set to avoid abusing the forum.
 
 The code is tested on Mac and Linux. But should works fine under Windows as long
@@ -14,11 +14,13 @@ Python2, PhantomJS, requests, lxml, BeautifulSoup (bs4), selenium, firefox (not 
 
 Quick Start:
     1) Modify the "_your_referral_url" link to your referral link
-    2) Run the code, it will take less than 1 hour to collect the rewards.
+    2) Run the code, it will take less than 2 hours to collect the rewards.
 
 @ Author:  Xiangwen Wang
-@ Date:    08/02/2016
+@ Date:    08/08/2016
 @ License: Apache 2.0
+
+Copyright 2016 Xiangwen Wang
 '''
 
 from selenium import webdriver
@@ -114,6 +116,7 @@ def try_register(proxy=None):
         profile.update_preferences()
         return webdriver.Firefox(firefox_profile=profile)
 
+    _waiting_time = 20
     random_str = generate_random_str()
     if proxy is None:
         driver = webdriver.PhantomJS()
@@ -126,16 +129,17 @@ def try_register(proxy=None):
     # visit the referral page first, then register
     driver.get(_your_referral_url)
     try:
-        driver.WebDriverWait(driver, 20)
+        driver.WebDriverWait(driver, _waiting_time)
     except:
-        print("Skip loading main page due to slow connection")
+        print("Skip loading,"),
     finally:
+        print("Cookie acquired,"),
         if not os.path.isdir('screenshot'):
             os.mkdir('screenshot')
         driver.save_screenshot('screenshot/screen0.png')
 
     driver.get("http://bbs.pinggu.org/member.php?mod=regpinggu")
-    driver.implicitly_wait(15)
+    driver.implicitly_wait(_waiting_time)
     # driver.add_cookie(cookie)
     # screenshot before filling forms
     driver.save_screenshot('screenshot/screen1.png')
@@ -151,15 +155,20 @@ def try_register(proxy=None):
     # field of interests
     driver.find_element_by_name('field7[]').click()
     # verification code
-    driver.find_element_by_name('secanswer').send_keys(
-        find_verif_code(driver.page_source))
+    try:
+        driver.find_element_by_name('secanswer').send_keys(
+            find_verif_code(driver.page_source))
+    except Exception as e:
+        # avoid memory leak
+        driver.quit()
+        raise e
     # screenshot after filling forms
     driver.save_screenshot('screenshot/screen2.png')
     # submit
     driver.find_element_by_id("registerformsubmit").click()
     # screenshot of the results
     driver.save_screenshot('screenshot/screen3.png')
-    driver.close()
+    driver.quit()
     return random_str
 
 
@@ -176,7 +185,7 @@ def access_referral(multi_attempts=True, skip_proxy=False):
                 break
             try:
                 requests.get(_your_referral_url, headers=random.choice(_userAgents),
-                             proxies=_proxy, timeout=60)
+                             proxies=_proxy, timeout=20)
                 count += 1
                 print("Visit %d finished" % count)
                 time.sleep(3)
@@ -221,13 +230,13 @@ def access_register(proxy=None):
             try_register(proxy=proxy)
             # print(try_register(proxy=proxy))
             i += 1
-            print("SUCCESS")
+            print("SUCCESS %d" % i)
         except:
-            print("ERROR")
+            print("ERROR, Retrying")
 
 
 if __name__ == '__main__':
     access_referral(multi_attempts=True)  # visit reward
-    access_register()  # register reward
+    access_register(proxy=None)  # register reward
     # while True: access_register(proxy=access_referral()); time.sleep(86000);
     # register with proxy, this is not necessary
