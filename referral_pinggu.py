@@ -14,10 +14,10 @@ Python2, PhantomJS, requests, lxml, BeautifulSoup (bs4), selenium, firefox (not 
 
 Quick Start:
     1) Modify the "_your_referral_url" link to your referral link
-    2) Run the code, it will take less than 2 hours to collect the rewards.
+    2) Run the code, it will take less than 1 hour to collect the rewards.
 
 @ Author:  Xiangwen Wang
-@ Date:    08/08/2016
+@ Date:    08/02/2016
 @ License: Apache 2.0
 
 Copyright 2016 Xiangwen Wang
@@ -33,6 +33,10 @@ import os
 import platform
 import requests
 import time
+import multiprocessing
+import traceback
+import gc
+
 
 # ------------change below to your referral link--------------
 _your_referral_url = 'http://bbs.pinggu.org/?fromuid=8822244'
@@ -40,7 +44,6 @@ _your_referral_url = 'http://bbs.pinggu.org/?fromuid=8822244'
 
 _max_visit_count = 30  # number of visit rewards per day
 _max_register_count = 10  # number of register rewards per day
-
 _userAgents = [{'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:5.0) Gecko/20100101 Firefox/5.0'},
                {"User-Agent": "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:16.0) Gecko/20121026 Firefox/16.0"},
                {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.6; rv:2.0.1) Gecko/20100101"}]
@@ -116,8 +119,8 @@ def try_register(proxy=None):
         profile.update_preferences()
         return webdriver.Firefox(firefox_profile=profile)
 
-    _waiting_time = 20
     random_str = generate_random_str()
+    _waiting_time = 20
     if proxy is None:
         driver = webdriver.PhantomJS()
     else:
@@ -133,7 +136,7 @@ def try_register(proxy=None):
     except:
         print("Skip loading,"),
     finally:
-        print("Cookie acquired,"),
+        print("Cookie acquired, "),
         if not os.path.isdir('screenshot'):
             os.mkdir('screenshot')
         driver.save_screenshot('screenshot/screen0.png')
@@ -159,7 +162,6 @@ def try_register(proxy=None):
         driver.find_element_by_name('secanswer').send_keys(
             find_verif_code(driver.page_source))
     except Exception as e:
-        # avoid memory leak
         driver.quit()
         raise e
     # screenshot after filling forms
@@ -223,20 +225,84 @@ def access_referral(multi_attempts=True, skip_proxy=False):
     return proxy
 
 
-def access_register(proxy=None):
+class Process(multiprocessing.Process):
+    def __init__(self, *args, **kwargs):
+        multiprocessing.Process.__init__(self, *args, **kwargs)
+        self._pconn, self._cconn = multiprocessing.Pipe()
+        self._exception = None
+
+    def run(self):
+        try:
+            multiprocessing.Process.run(self)
+            self._cconn.send(None)
+        except Exception as e:
+            self._cconn.send((e, traceback.format_exc()))
+
+    @property
+    def exception(self):
+        if self._pconn.poll():
+            self._exception = self._pconn.recv()
+        return self._exception
+
+
+class TimeoutError(Exception):
+    def __init__(self, value):
+        self.value = value
+
+    def __str__(self):
+        return repr(self.value)
+
+
+class TimeoutTracker():
+    """
+    Multiprocessing timeout checker
+    """
+    _timeout_threshold = 360  # seconds. Max timeout threshold for registration.
+
+    def __init__(self, function):
+        self.function = function
+
+    def __call__(self, *args, **kargs):
+
+        def function_process(pipe, function, args, kargs):
+            pipe.send(function(*args, **kargs))  # A: result got from function process
+
+        p_pipe, c_pipe = multiprocessing.Pipe()
+        p = Process(target=function_process, args=(c_pipe, self.function, args, kargs))
+        p.start()
+        p.join(self._timeout_threshold)  # Wait
+
+        if p.exception:
+            # if there is other Error
+            raise RuntimeError
+        elif p.is_alive():
+            # if passes the timeout threshold, terminate function process
+            p.terminate()
+            raise TimeoutError('Timeout')
+        else:
+            return p_pipe.recv()  # return result from A
+
+
+def access_register(proxy=None, timeout_check=True):
     i = 0
     while i < _max_register_count:
         try:
-            try_register(proxy=proxy)
-            # print(try_register(proxy=proxy))
+            if timeout_check:
+                TimeoutTracker(try_register)(proxy=proxy)
+            else:
+                print(try_register(proxy=proxy))
             i += 1
             print("SUCCESS %d" % i)
-        except:
-            print("ERROR, Retrying")
+        except Exception as e:
+            print(str(e) + 'Error , retrying')
+        finally:
+            for p in multiprocessing.active_children():
+                p.terminate()
+            gc.collect()
 
 
 if __name__ == '__main__':
-    access_referral(multi_attempts=True)  # visit reward
-    access_register(proxy=None)  # register reward
+    access_referral(multi_attempts=True, skip_proxy=False)  # farm visitation rewards
+    access_register(proxy=None, timeout_check=True)  # farm register rewards
     # while True: access_register(proxy=access_referral()); time.sleep(86000);
     # register with proxy, this is not necessary
