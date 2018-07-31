@@ -17,7 +17,7 @@ Quick Start:
     2) Run the code, it will take less than 1 hour to collect the rewards.
 
 @ Author:  Xiangwen Wang
-@ Date:    08/02/2016
+@ Date:    08/26/2016
 @ License: Apache 2.0
 
 Copyright 2016 Xiangwen Wang
@@ -47,6 +47,7 @@ _max_register_count = 10  # number of register rewards per day
 _userAgents = [{'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:5.0) Gecko/20100101 Firefox/5.0'},
                {"User-Agent": "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:16.0) Gecko/20121026 Firefox/16.0"},
                {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.6; rv:2.0.1) Gecko/20100101"}]
+driver = None
 
 
 def update_proxy():
@@ -121,6 +122,7 @@ def try_register(proxy=None):
 
     random_str = generate_random_str()
     _waiting_time = 20
+    global driver
     if proxy is None:
         driver = webdriver.PhantomJS()
     else:
@@ -197,6 +199,7 @@ def access_referral(multi_attempts=True, skip_proxy=False):
     # following are two site-availability-check service providers, but they can be used
     # to increase the visit IPs of our referral link. However, this could be potentailly
     # imcrease the stress of the forum, therefore try not to use it.
+    global driver
     try:
         assert multi_attempts
         testing_url1 = 'http://www.host-tracker.com/'
@@ -206,8 +209,9 @@ def access_referral(multi_attempts=True, skip_proxy=False):
         driver.find_element_by_tag_name('button').click()
         driver.implicitly_wait(120)
         # driver.save_screenshot('screenshot/site_check1.png')
-        driver.close()
+        driver.quit()
     except:
+        driver.quit()
         time.sleep(1)
 
     try:
@@ -218,8 +222,9 @@ def access_referral(multi_attempts=True, skip_proxy=False):
         driver.find_element_by_name('url').send_keys(_your_referral_url, Keys.RETURN)
         driver.implicitly_wait(120)
         # driver.save_screenshot('screenshot/site_check2.png')
-        driver.close()
+        driver.quit()
     except:
+        driver.quit()
         time.sleep(1)
 
     return proxy
@@ -277,6 +282,7 @@ class TimeoutTracker():
             raise RuntimeError
         elif p.is_alive():
             # if passes the timeout threshold, terminate function process
+            driver.quit()
             p.terminate()
             raise TimeoutError('Timeout')
         else:
